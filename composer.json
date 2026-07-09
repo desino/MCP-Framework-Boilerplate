@@ -1,0 +1,47 @@
+{
+    "name": "desino/mcp-boilerplate",
+    "description": "Desino MCP boilerplate for Laravel: dynamic MCP server, tool manager UI, support tools, and audit logging.",
+    "type": "library",
+    "keywords": [
+        "laravel",
+        "mcp",
+        "boilerplate",
+        "desino",
+        "model-context-protocol"
+    ],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Desino",
+            "email": "india@desino.be"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "laravel/framework": "^13.0",
+        "laravel/mcp": "^0.8"
+    },
+    "suggest": {
+        "desino/boilerplate": "Admin UI scaffolding, auth, and AppMiscService helpers (^1.0)",
+        "desino/crud-engine": "CRUD scaffolding used alongside the boilerplate (^1.0)"
+    },
+    "autoload": {
+        "psr-4": {
+            "Desino\\McpBoilerplate\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Desino\\McpBoilerplate\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Desino\\McpBoilerplate\\McpBoilerplateServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

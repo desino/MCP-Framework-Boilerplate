@@ -1,0 +1,19 @@
+<?php
+
+namespace Desino\McpBoilerplate\Mcp\Tools;
+
+use Laravel\Mcp\Response;
+use Laravel\Mcp\Server\Tool;
+
+abstract class SupportTool extends Tool
+{
+    /**
+     * Encode a data payload as a pretty-printed JSON text response.
+     */
+    protected function json(mixed $data): Response
+    {
+        return Response::text(
+            (string) json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+        );
+    }
+}

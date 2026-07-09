@@ -1,0 +1,6 @@
+    public function outputSchema(JsonSchema $schema): array
+    {
+        return [
+{{ fields }}
+        ];
+    }

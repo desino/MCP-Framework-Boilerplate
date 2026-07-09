@@ -1,0 +1,28 @@
+<?php
+
+namespace Desino\McpBoilerplate\Mcp\Tools;
+
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Laravel\Mcp\Request;
+use Laravel\Mcp\Response;
+use Laravel\Mcp\Server\Attributes\Description;
+use Laravel\Mcp\Server\Tool;
+
+#[Description('Validate Laravel controller redirections.\n\nCheck all controller methods and ensure every redirect uses a named route or redirect back.\n\nAllowed:\n- return redirect()->route(\'route.name\')\n- return to_route(\'route.name\')\n- return redirect()->intended(route(\'route.name\'))\n\nNot allowed:\n- return redirect(\'/some-url\')\n- return redirect(\'some-url\')\n- return Redirect::to(\'/some-url\')\n- return redirect()->to(\'/some-url\')\n- return response()->redirectTo(\'/some-url\')\n- hardcoded URLs inside redirects\n- return redirect()->back()\n- return back()\n\nValidation rule:\nEvery controller redirect must either:\n1. redirect to a named route, or\n\nIf direct URL redirects are found, report:\n- file path\n- controller class\n- method name\n- line number\n- current redirect code\n- suggested replacement using route name, if route can be identified\n\nDo not flag external redirects intentionally going outside the application, such as payment gateway, OAuth, SSO, or third-party callback redirects, but mention them separately as “external redirect ignored”.')]
+class ValidateRedirectionTool extends Tool
+{
+    protected string $name = 'validate_redirection';
+
+    public function handle(Request $request): Response
+    {
+        return Response::text('Implement ValidateRedirectionTool::handle().');
+    }
+
+    /**
+     * @return array<string, JsonSchema>
+     */
+    public function schema(JsonSchema $schema): array
+    {
+        return [];
+    }
+}

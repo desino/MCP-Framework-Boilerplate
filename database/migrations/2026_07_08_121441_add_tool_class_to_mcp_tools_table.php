@@ -1,0 +1,52 @@
+<?php
+
+use Desino\McpBoilerplate\Models\McpTool;
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('mcp_tools', function (Blueprint $table) {
+            $table->string('tool_class')->nullable()->after('handler_type');
+        });
+
+        DB::table('mcp_tools')
+            ->whereNotNull('handler_config')
+            ->get()
+            ->each(function (object $row): void {
+                $handlerConfig = json_decode((string) $row->handler_config, true);
+
+                if (! is_array($handlerConfig) || empty($handlerConfig['class'])) {
+                    return;
+                }
+
+                DB::table('mcp_tools')
+                    ->where('id', $row->id)
+                    ->update([
+                        'tool_class' => $handlerConfig['class'],
+                        'handler_type' => McpTool::getHandlerTypeCustom(),
+                    ]);
+            });
+
+        DB::table('mcp_tools')
+            ->whereNull('tool_class')
+            ->update(['handler_type' => McpTool::getHandlerTypeLibrary()]);
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('mcp_tools', function (Blueprint $table) {
+            $table->dropColumn('tool_class');
+        });
+    }
+};

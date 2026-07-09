@@ -1,0 +1,67 @@
+@php
+    $context = $context ?? null;
+    $showCustomFields = $showCustomFields ?? true;
+@endphp
+
+<div class="col-12 @if (! $showCustomFields) d-none @endif" id="custom_tool_fields">
+    <div class="row">
+        <div class="col-12 col-md-6 mb-3">
+            <label for="title" class="fw-bold form-label">
+                {{ __('mcp-boilerplate::messages.mcp_tool_form_field_title_text') }}
+            </label>
+            <input type="text" class="form-control @error('title') is-invalid @enderror" id="title" name="title" value="{{ old('title', $context?->title ?? '') }}" autocomplete="off" placeholder="{{ __('mcp-boilerplate::messages.mcp_tool_form_field_title_placeholder_text') }}" />
+            <small class="text-muted">{{ __('mcp-boilerplate::messages.mcp_tool_form_field_title_help_text') }}</small>
+            @error('title')
+                <small class="invalid-feedback fw-bold fst-italic text-danger" role="alert">{{ $message }}</small>
+            @enderror
+        </div>
+
+        <div class="col-12 mb-3" id="custom_description_field">
+            <label for="description" class="fw-bold form-label">
+                {{ __('mcp-boilerplate::messages.mcp_tool_form_field_description_text') }} <sup><i class="fa-solid fa-asterisk text-danger small fw-bold"></i></sup>
+            </label>
+            <textarea class="form-control @error('description') is-invalid @enderror" id="description" name="description" rows="4">{{ old('description', $context?->description ?? '') }}</textarea>
+            <small class="text-muted">{{ __('mcp-boilerplate::messages.mcp_tool_form_field_custom_description_help_text') }}</small>
+            @error('description')
+                <small class="invalid-feedback fw-bold fst-italic text-danger" role="alert">{{ $message }}</small>
+            @enderror
+        </div>
+
+        <div class="col-12 col-md-6 mb-3">
+            <label for="input_schema_json" class="fw-bold form-label">
+                {{ __('mcp-boilerplate::messages.mcp_tool_form_field_input_schema_text') }}
+            </label>
+            <textarea class="form-control font-monospace @error('input_schema_json') is-invalid @enderror" id="input_schema_json" name="input_schema_json" rows="10">{{ old('input_schema_json', $context?->inputSchemaJson() ?? '[]') }}</textarea>
+            <small class="text-muted">{!! __('mcp-boilerplate::messages.mcp_tool_form_field_input_schema_help_text') !!}</small>
+            @error('input_schema_json')
+                <small class="invalid-feedback fw-bold fst-italic text-danger" role="alert">{{ $message }}</small>
+            @enderror
+        </div>
+
+        <div class="col-12 col-md-6 mb-3">
+            <label for="output_schema_json" class="fw-bold form-label">
+                {{ __('mcp-boilerplate::messages.mcp_tool_form_field_output_schema_text') }}
+            </label>
+            <textarea class="form-control font-monospace @error('output_schema_json') is-invalid @enderror" id="output_schema_json" name="output_schema_json" rows="10">{{ old('output_schema_json', $context?->outputSchemaJson() ?? '[]') }}</textarea>
+            <small class="text-muted">{!! __('mcp-boilerplate::messages.mcp_tool_form_field_output_schema_help_text') !!}</small>
+            @error('output_schema_json')
+                <small class="invalid-feedback fw-bold fst-italic text-danger" role="alert">{{ $message }}</small>
+            @enderror
+        </div>
+
+        <div class="col-12 mb-3">
+            <span class="fw-bold form-label d-block">{{ __('mcp-boilerplate::messages.mcp_tool_form_field_annotations_text') }}</span>
+            <small class="text-muted d-block mb-2">{{ __('mcp-boilerplate::messages.mcp_tool_form_field_annotations_help_text') }}</small>
+            <div class="form-check">
+                <input type="hidden" name="is_read_only" value="0">
+                <input type="checkbox" class="form-check-input" id="is_read_only" name="is_read_only" value="1" @checked(old('is_read_only', $context?->isReadOnly ?? true))>
+                <label class="form-check-label" for="is_read_only">{{ __('mcp-boilerplate::messages.mcp_tool_form_field_is_read_only_text') }}</label>
+            </div>
+            <div class="form-check">
+                <input type="hidden" name="is_destructive" value="0">
+                <input type="checkbox" class="form-check-input" id="is_destructive" name="is_destructive" value="1" @checked(old('is_destructive', $context?->isDestructive ?? false))>
+                <label class="form-check-label" for="is_destructive">{{ __('mcp-boilerplate::messages.mcp_tool_form_field_is_destructive_text') }}</label>
+            </div>
+        </div>
+    </div>
+</div>

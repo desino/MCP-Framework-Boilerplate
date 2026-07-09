@@ -1,0 +1,43 @@
+<?php
+
+namespace {{ namespace }};
+
+use {{ supportToolClass }};
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Laravel\Mcp\Request;
+use Laravel\Mcp\Response;
+use Laravel\Mcp\Server\Attributes\Description;
+use Laravel\Mcp\Server\Attributes\Title;
+use Laravel\Mcp\Server\Tools\Annotations\IsDestructive;
+use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
+
+// @mcp-context-attributes-start
+{{ attributesBlock }}
+// @mcp-context-attributes-end
+class {{ className }} extends SupportTool
+{
+    protected string $name = '{{ toolName }}';
+
+    public function handle(Request $request): Response
+    {
+        $input = $request->validate([
+{{ validationRules }}
+        ]);
+
+        return Response::text('Implement {{ className }}::handle().');
+    }
+
+    /**
+     * @return array<string, JsonSchema>
+     */
+    // @mcp-context-schema-start
+{{ schemaMethod }}
+    // @mcp-context-schema-end
+
+    /**
+     * @return array<string, JsonSchema>
+     */
+    // @mcp-context-output-schema-start
+{{ outputSchemaMethod }}
+    // @mcp-context-output-schema-end
+}
