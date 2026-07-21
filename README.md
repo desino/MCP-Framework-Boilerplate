@@ -1,4 +1,4 @@
-# desino/mcp-boilerplate
+# desino/mcp-framework-boilerplate
 
 Laravel scaffolding package that publishes the Desino MCP reference application into your host app via a single Artisan command — similar to [desino/boilerplate](https://github.com/desino/LaravelBoilerPlate).
 
@@ -24,7 +24,7 @@ After installation, MCP code lives in your application (`app/`, `routes/`, `reso
 ### 1. Require the package
 
 ```bash
-composer require desino/mcp-boilerplate
+composer require desino/mcp-framework-boilerplate
 ```
 
 For local development from this repository:
@@ -38,7 +38,7 @@ For local development from this repository:
         }
     ],
     "require": {
-        "desino/mcp-boilerplate": "@dev"
+        "desino/mcp-framework-boilerplate": "@dev"
     }
 }
 ```
@@ -53,7 +53,7 @@ composer update
 ### 3. Publish MCP boilerplate
 
 ```bash
-php artisan make:desino-mcp-boilerplate
+php artisan make:desino-mcp-framework-boilerplate
 ```
 
 Use `--force` to overwrite files that already exist.
@@ -163,7 +163,7 @@ Key options in `config/mcp_support.php`:
 
 This package is a **thin installer**. It only ships:
 
-- `MakeMcpBoilerplateCommand` (`php artisan make:desino-mcp-boilerplate`)
+- `MakeMcpBoilerplateCommand` (`php artisan make:desino-mcp-framework-boilerplate`)
 - Application stubs under `src/stubs/`
 
 All runtime MCP logic runs from your host application's `app/` directory after publishing.

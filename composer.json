@@ -1,5 +1,5 @@
 {
-    "name": "desino/mcp-boilerplate",
+    "name": "desino/mcp-framework-boilerplate",
     "description": "Desino MCP boilerplate for Laravel: publish MCP server, tool manager UI, support tools, and audit logging into your application via Artisan.",
     "type": "library",
     "keywords": [

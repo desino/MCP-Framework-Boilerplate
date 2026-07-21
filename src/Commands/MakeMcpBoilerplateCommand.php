@@ -9,7 +9,7 @@ use Symfony\Component\Finder\SplFileInfo;
 
 class MakeMcpBoilerplateCommand extends Command
 {
-    protected $signature = 'make:desino-mcp-boilerplate {--force : Overwrite files that already exist}';
+    protected $signature = 'make:desino-mcp-framework-boilerplate {--force : Overwrite files that already exist}';
 
     protected $description = 'Publish Desino MCP boilerplate files into your Laravel application.';
 
@@ -41,7 +41,7 @@ class MakeMcpBoilerplateCommand extends Command
         $this->comment('Next steps:');
         $this->comment('  php artisan migrate');
         $this->comment('Add an MCP Tools nav link in resources/views/layouts/app.blade.php if needed.');
-        $this->comment('See vendor/desino/mcp-boilerplate README.md for details.');
+        $this->comment('See vendor/desino/mcp-framework-boilerplate README.md for details.');
 
         return self::SUCCESS;
     }
