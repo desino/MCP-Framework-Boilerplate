@@ -10,6 +10,11 @@
         "model-context-protocol"
     ],
     "license": "MIT",
+    "homepage": "https://github.com/desino/MCP-Framework-Boilerplate",
+    "support": {
+        "issues": "https://github.com/desino/MCP-Framework-Boilerplate/issues",
+        "source": "https://github.com/desino/MCP-Framework-Boilerplate"
+    },
     "authors": [
         {
             "name": "Desino",
