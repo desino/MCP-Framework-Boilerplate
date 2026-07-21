@@ -1,0 +1,58 @@
+<?php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+class VerifyMcpToken
+{
+    /**
+     * Handle an incoming request.
+     *
+     * @param  Closure(Request): (Response)  $next
+     */
+    public function handle(Request $request, Closure $next): Response
+    {
+        $configuredToken = config('mcp_support.mcp_api_token');
+
+        if (! is_string($configuredToken) || $configuredToken === '') {
+            return $this->errorResponse('MCP API token is not configured.', Response::HTTP_SERVICE_UNAVAILABLE);
+        }
+
+        $token = $this->extractBearerToken($request);
+
+        if ($token === null || ! hash_equals($configuredToken, $token)) {
+            return $this->errorResponse('Unauthorized MCP request.', Response::HTTP_UNAUTHORIZED);
+        }
+
+        return $next($request);
+    }
+
+    protected function extractBearerToken(Request $request): ?string
+    {
+        $authorization = $request->header('Authorization');
+
+        if (! is_string($authorization) || ! str_starts_with($authorization, 'Bearer ')) {
+            return null;
+        }
+
+        $token = trim(substr($authorization, 7));
+
+        return $token !== '' ? $token : null;
+    }
+
+    protected function errorResponse(string $message, int $status): JsonResponse
+    {
+        return response()->json([
+            'jsonrpc' => '2.0',
+            'error' => [
+                'code' => -32001,
+                'message' => $message,
+            ],
+            'id' => null,
+        ], $status);
+    }
+}

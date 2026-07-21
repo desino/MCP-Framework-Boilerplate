@@ -1,0 +1,150 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class McpTool extends Model
+{
+    use HasFactory;
+
+    public const STATUS_INACTIVE = 0;
+
+    public const STATUS_ACTIVE = 1;
+
+    public const HANDLER_TYPE_LIBRARY = 1;
+
+    public const HANDLER_TYPE_CUSTOM = 2;
+
+    public const TOOL_SELECTION_CUSTOM = 'custom';
+
+    /**
+     * Indicates if the model should be timestamped.
+     *
+     * @var bool
+     */
+    public $timestamps = false;
+
+    /**
+     * @var string
+     */
+    protected $table = 'mcp_tools';
+
+    /**
+     * The attributes that aren't mass assignable.
+     *
+     * @var array
+     */
+    protected $guarded = [];
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'handler_type' => 'integer',
+            'input_schema' => 'array',
+            'output_schema' => 'array',
+            'handler_config' => 'array',
+        ];
+    }
+
+    /**
+     * @param  Builder  $query
+     * @return Builder
+     */
+    public function scopeStatus($query, int|array $status)
+    {
+        if (is_array($status)) {
+            return $query->whereIn('status', $status);
+        }
+
+        return $query->where('status', $status);
+    }
+
+    /**
+     * @param  Builder  $query
+     * @return Builder
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('status', self::getStatusActive());
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    public static function getStatuses(): array
+    {
+        return [
+            self::getStatusActive(),
+            self::getStatusInactive(),
+        ];
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    public static function getHandlerTypes(): array
+    {
+        return [
+            self::getHandlerTypeLibrary(),
+            self::getHandlerTypeCustom(),
+        ];
+    }
+
+    public function isStatusActive(): bool
+    {
+        return $this->status == self::getStatusActive();
+    }
+
+    public function isStatusInactive(): bool
+    {
+        return $this->status == self::getStatusInactive();
+    }
+
+    public function isHandlerTypeLibrary(): bool
+    {
+        return (int) $this->handler_type === self::getHandlerTypeLibrary();
+    }
+
+    public function isHandlerTypeCustom(): bool
+    {
+        return (int) $this->handler_type === self::getHandlerTypeCustom();
+    }
+
+    public function handlerTypeLabel(): string
+    {
+        $translationKey = 'messages.mcp_tool_handler_type'.$this->handler_type.'_text';
+        $label = __($translationKey);
+
+        if ($label === $translationKey) {
+            return __('messages.mcp_tool_handler_type_unknown_text');
+        }
+
+        return $label;
+    }
+
+    public static function getStatusActive(): int
+    {
+        return self::STATUS_ACTIVE;
+    }
+
+    public static function getStatusInactive(): int
+    {
+        return self::STATUS_INACTIVE;
+    }
+
+    public static function getHandlerTypeLibrary(): int
+    {
+        return self::HANDLER_TYPE_LIBRARY;
+    }
+
+    public static function getHandlerTypeCustom(): int
+    {
+        return self::HANDLER_TYPE_CUSTOM;
+    }
+}

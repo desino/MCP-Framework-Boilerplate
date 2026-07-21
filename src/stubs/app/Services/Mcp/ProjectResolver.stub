@@ -1,0 +1,23 @@
+<?php
+
+namespace App\Services\Mcp;
+
+use App\Models\McpProject;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+
+class ProjectResolver
+{
+    public function resolve(string $projectCode): McpProject
+    {
+        $project = McpProject::query()
+            ->where('code', strtoupper(trim($projectCode)))
+            ->where('active', true)
+            ->first();
+
+        if (! $project) {
+            throw (new ModelNotFoundException)->setModel(McpProject::class, [$projectCode]);
+        }
+
+        return $project;
+    }
+}

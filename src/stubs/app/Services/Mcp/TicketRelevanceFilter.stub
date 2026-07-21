@@ -1,0 +1,343 @@
+<?php
+
+namespace App\Services\Mcp;
+
+class TicketRelevanceFilter
+{
+    /**
+     * @var array<int, string>
+     */
+    protected array $stopWords = [
+        'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'any', 'can',
+        'her', 'was', 'one', 'our', 'out', 'has', 'have', 'with', 'this', 'that',
+        'from', 'they', 'will', 'what', 'when', 'where', 'which', 'who', 'why',
+        'how', 'into', 'your', 'about', 'issue', 'issues', 'problem', 'please',
+        'help', 'ticket', 'tickets', 'error', 'errors', 'bug', 'bugs', 'fix',
+        'fixed', 'broken', 'does', 'doesn', 'don', 'did', 'get', 'getting',
+        'check', 'look', 'tell', 'know', 'just', 'need', 'want', 'could',
+    ];
+
+    /**
+     * @param  array<int, array<string, mixed>>  $tickets
+     * @return array<int, array<string, mixed>>
+     */
+    public function filter(array $tickets, string $query, int $limit = 10): array
+    {
+        $parsed = $this->parseQuery($query);
+
+        if ($parsed['terms'] === [] && $parsed['phrases'] === [] && $parsed['references'] === []) {
+            return collect($tickets)->take($limit)->values()->all();
+        }
+
+        $scored = collect($tickets)
+            ->map(function (array $ticket) use ($parsed, $query) {
+                $ticket['relevance'] = $this->score($ticket, $parsed, $query);
+
+                return $ticket;
+            })
+            ->filter(fn (array $ticket) => $ticket['relevance']['score'] > 0)
+            ->sortByDesc(fn (array $ticket) => [
+                $ticket['relevance']['score'],
+                $ticket['relevance']['coverage'],
+                $ticket['created_at'] ?? '',
+            ])
+            ->values();
+
+        if ($scored->isEmpty()) {
+            return [];
+        }
+
+        $topScore = (int) $scored->first()['relevance']['score'];
+        $threshold = max(4, (int) floor($topScore * 0.3));
+
+        return $scored
+            ->filter(fn (array $ticket) => $ticket['relevance']['score'] >= $threshold)
+            ->take($limit)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array{terms: array<int, string>, phrases: array<int, string>, references: array<int, string>, normalized: string}
+     */
+    public function parseQuery(string $query): array
+    {
+        $normalized = $this->normalize($query);
+        $phrases = [];
+        $references = [];
+        $termSource = $query;
+
+        if (preg_match_all('/"([^"]+)"/u', $query, $quoted)) {
+            foreach ($quoted[1] as $phrase) {
+                $clean = $this->normalize($phrase);
+
+                if ($clean !== '') {
+                    $phrases[] = $clean;
+                }
+            }
+
+            $termSource = preg_replace('/"[^"]*"/u', ' ', $query) ?? $query;
+        }
+
+        if (preg_match_all('/\b[A-Z]{2,}-\d+\b/u', $query, $ticketRefs)) {
+            foreach ($ticketRefs[0] as $ref) {
+                $references[] = mb_strtolower($ref);
+            }
+        }
+
+        if (preg_match_all('/#(\d+)\b/u', $query, $hashRefs)) {
+            foreach ($hashRefs[1] as $ref) {
+                $references[] = $ref;
+            }
+        }
+
+        $terms = collect(preg_split('/[\s,.;:!?()]+/u', $this->normalize($termSource)) ?: [])
+            ->filter(fn (string $term) => $this->isUsefulTerm($term))
+            ->unique()
+            ->values()
+            ->all();
+
+        foreach ($phrases as $phrase) {
+            foreach (preg_split('/\s+/u', $phrase) ?: [] as $phraseTerm) {
+                if ($this->isUsefulTerm($phraseTerm)) {
+                    $terms[] = $phraseTerm;
+                }
+            }
+        }
+
+        $terms = array_values(array_unique($terms));
+
+        return [
+            'terms' => $terms,
+            'phrases' => array_values(array_unique($phrases)),
+            'references' => array_values(array_unique($references)),
+            'normalized' => $normalized,
+        ];
+    }
+
+    /**
+     * Build a de-duplicated keyword list for the PM Tool API from a prompt.
+     * Prioritises ticket references, then quoted phrases, then useful terms.
+     *
+     * @return array<int, string>
+     */
+    public function keywords(string $query): array
+    {
+        $parsed = $this->parseQuery($query);
+
+        return collect($parsed['references'])
+            ->merge($parsed['phrases'])
+            ->merge($parsed['terms'])
+            ->filter(fn (string $keyword) => $keyword !== '')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $ticket
+     * @param  array{terms: array<int, string>, phrases: array<int, string>, references: array<int, string>, normalized: string}  $parsed
+     * @return array{score: int, coverage: float, matched_terms: array<int, string>, matched_phrases: array<int, string>, matched_fields: array<int, string>, reasons: array<int, string>}
+     */
+    protected function score(array $ticket, array $parsed, string $query): array
+    {
+        $fields = [
+            'composed_name' => ['text' => (string) ($ticket['composed_name'] ?? ''), 'weight' => 10],
+            'release_note' => ['text' => (string) ($ticket['release_note'] ?? ''), 'weight' => 4],
+            'description' => ['text' => (string) ($ticket['description'] ?? ''), 'weight' => 3],
+            'comments' => [
+                'text' => collect($ticket['comments'] ?? [])
+                    ->map(fn ($comment) => (string) ($comment['comment'] ?? ''))
+                    ->implode(' '),
+                'weight' => 2,
+            ],
+        ];
+
+        $score = 0;
+        $matchedTerms = [];
+        $matchedPhrases = [];
+        $matchedFields = [];
+        $reasons = [];
+
+        foreach ($fields as $field => $config) {
+            $haystack = $this->normalize($config['text']);
+
+            if ($haystack === '') {
+                continue;
+            }
+
+            foreach ($parsed['references'] as $reference) {
+                if ($this->containsReference($haystack, $reference)) {
+                    $bonus = $field === 'composed_name' ? 50 : 20;
+                    $score += $bonus;
+                    $matchedFields[] = $field;
+                    $reasons[] = "reference:{$reference} in {$field}";
+                }
+            }
+
+            foreach ($parsed['phrases'] as $phrase) {
+                if ($this->containsPhrase($haystack, $phrase)) {
+                    $bonus = $field === 'composed_name' ? 30 : ($field === 'release_note' ? 12 : 8);
+                    $score += $bonus;
+                    $matchedPhrases[] = $phrase;
+                    $matchedFields[] = $field;
+                    $reasons[] = "phrase:{$phrase} in {$field}";
+                }
+            }
+
+            foreach ($parsed['terms'] as $term) {
+                if ($this->containsTerm($haystack, $term)) {
+                    $score += $config['weight'];
+                    $matchedTerms[] = $term;
+                    $matchedFields[] = $field;
+                }
+            }
+        }
+
+        if ($parsed['normalized'] !== '' && $this->containsPhrase($this->normalize((string) ($ticket['composed_name'] ?? '')), $parsed['normalized'])) {
+            $score += 25;
+            $matchedFields[] = 'composed_name';
+            $reasons[] = 'composed_name contains full query';
+        }
+
+        $uniqueMatchedTerms = array_values(array_unique($matchedTerms));
+        $termCount = count($parsed['terms']);
+
+        if ($termCount > 0 && count($uniqueMatchedTerms) === $termCount) {
+            $score += 15;
+            $reasons[] = 'all query terms matched';
+        }
+
+        if ($termCount > 0) {
+            $coverage = count($uniqueMatchedTerms) / $termCount;
+            $score += (int) round($coverage * 10);
+        } else {
+            $coverage = count($matchedPhrases) > 0 || count($parsed['references']) > 0 ? 1.0 : 0.0;
+        }
+
+        if ($this->composedNameStrongMatch($ticket, $parsed)) {
+            $score += 20;
+            $reasons[] = 'strong composed_name match';
+        }
+
+        return [
+            'score' => $score,
+            'coverage' => round($coverage, 2),
+            'matched_terms' => $uniqueMatchedTerms,
+            'matched_phrases' => array_values(array_unique($matchedPhrases)),
+            'matched_fields' => array_values(array_unique($matchedFields)),
+            'reasons' => array_values(array_unique($reasons)),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $ticket
+     * @param  array{terms: array<int, string>, phrases: array<int, string>, references: array<int, string>, normalized: string}  $parsed
+     */
+    protected function composedNameStrongMatch(array $ticket, array $parsed): bool
+    {
+        $composedName = $this->normalize((string) ($ticket['composed_name'] ?? ''));
+
+        if ($composedName === '') {
+            return false;
+        }
+
+        foreach ($parsed['phrases'] as $phrase) {
+            if ($this->containsPhrase($composedName, $phrase)) {
+                return true;
+            }
+        }
+
+        $composedMatches = collect($parsed['terms'])
+            ->filter(fn (string $term) => $this->containsTerm($composedName, $term))
+            ->count();
+
+        if ($composedMatches === 0) {
+            return false;
+        }
+
+        if (count($parsed['terms']) <= 2) {
+            return $composedMatches === count($parsed['terms']);
+        }
+
+        return $composedMatches >= max(2, (int) ceil(count($parsed['terms']) * 0.5));
+    }
+
+    protected function normalize(string $text): string
+    {
+        $text = mb_strtolower(trim($text));
+        $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
+
+        return $text;
+    }
+
+    protected function isUsefulTerm(string $term): bool
+    {
+        if ($term === '') {
+            return false;
+        }
+
+        if (preg_match('/^[a-z]{2}-\d+$/u', $term)) {
+            return true;
+        }
+
+        if (preg_match('/^\d+$/u', $term) && mb_strlen($term) >= 3) {
+            return true;
+        }
+
+        if (mb_strlen($term) < 3) {
+            return false;
+        }
+
+        return ! in_array($term, $this->stopWords, true);
+    }
+
+    protected function containsTerm(string $haystack, string $term): bool
+    {
+        if ($term === '' || $haystack === '') {
+            return false;
+        }
+
+        if (preg_match('/^[a-z0-9]+$/u', $term)) {
+            return (bool) preg_match('/\b'.preg_quote($term, '/').'\b/u', $haystack);
+        }
+
+        return str_contains($haystack, $term);
+    }
+
+    protected function containsPhrase(string $haystack, string $phrase): bool
+    {
+        if ($phrase === '' || $haystack === '') {
+            return false;
+        }
+
+        if (str_contains($haystack, $phrase)) {
+            return true;
+        }
+
+        $terms = preg_split('/\s+/u', $phrase) ?: [];
+
+        if (count($terms) < 2) {
+            return $this->containsTerm($haystack, $phrase);
+        }
+
+        $pattern = collect($terms)
+            ->map(fn (string $term) => '\b'.preg_quote($term, '/').'\b')
+            ->implode('.*?');
+
+        return (bool) preg_match('/'.$pattern.'/u', $haystack);
+    }
+
+    protected function containsReference(string $haystack, string $reference): bool
+    {
+        if ($reference === '' || $haystack === '') {
+            return false;
+        }
+
+        if (ctype_digit($reference)) {
+            return (bool) preg_match('/(?:^|[#-\s])'.preg_quote($reference, '/').'(?:\b|$)/u', $haystack);
+        }
+
+        return str_contains($haystack, $reference);
+    }
+}

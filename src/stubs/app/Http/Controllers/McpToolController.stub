@@ -1,0 +1,430 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Data\CustomMcpToolContext;
+use App\Models\McpTool;
+use App\Services\AppMiscService;
+use App\Services\CustomMcpToolGeneratorService;
+use App\Services\McpToolLibraryService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use InvalidArgumentException;
+use RuntimeException;
+
+class McpToolController extends Controller
+{
+    private $loggedUser;
+
+    public function __construct(
+        protected McpToolLibraryService $library,
+        protected CustomMcpToolGeneratorService $customToolGenerator,
+    ) {
+        $this->middleware(function ($request, $next) {
+            $this->loggedUser = \Auth::user();
+
+            return $next($request);
+        });
+    }
+
+    public function index(Request $request)
+    {
+        if (! $this->loggedUser) {
+            AppMiscService::addRedirectMsg(__('messages.general_not_allowed_access_message_text'));
+
+            return redirect()->route('home');
+        }
+
+        $mcpToolStatuses = McpTool::getStatuses();
+
+        if ($request->isMethod('POST')) {
+            $mcpToolsIndexFilterStatuses = $request->post('mcp_tools_index_filter_statuses', [$mcpToolStatuses[0]]);
+            $validatedMcpToolsIndexFilterStatuses = count($mcpToolsIndexFilterStatuses) == count(array_intersect($mcpToolsIndexFilterStatuses, $mcpToolStatuses)) ? $mcpToolsIndexFilterStatuses : [$mcpToolStatuses[0]];
+            $request->session()->put('mcp_tools_index_filter_statuses', $validatedMcpToolsIndexFilterStatuses);
+
+            $mcpToolsIndexFilterKeyword = $request->post('mcp_tools_index_filter_keyword', '');
+            $request->session()->put('mcp_tools_index_filter_keyword', $mcpToolsIndexFilterKeyword);
+        }
+
+        $mcpToolsIndexFilterStatuses = $request->session()->get('mcp_tools_index_filter_statuses', [$mcpToolStatuses[0]]);
+        $mcpToolsIndexFilterStatuses = count($mcpToolsIndexFilterStatuses) == count(array_intersect($mcpToolsIndexFilterStatuses, $mcpToolStatuses)) ? $mcpToolsIndexFilterStatuses : [$mcpToolStatuses[0]];
+
+        $mcpToolsIndexFilterKeyword = $request->session()->get('mcp_tools_index_filter_keyword', '');
+
+        $mcpTools = McpTool::orderBy('name', 'ASC')
+            ->status($mcpToolsIndexFilterStatuses)
+            ->when(strlen($mcpToolsIndexFilterKeyword) > 0, function ($q) use ($mcpToolsIndexFilterKeyword) {
+                $q->where(function ($query) use ($mcpToolsIndexFilterKeyword) {
+                    $query->where('name', 'LIKE', '%'.$mcpToolsIndexFilterKeyword.'%')
+                        ->orWhere('description', 'LIKE', '%'.$mcpToolsIndexFilterKeyword.'%');
+                });
+            })
+            ->paginate(20);
+
+        $page_title = __('messages.mcp_tools_list_page_title');
+
+        return view('mcp_tools.index', compact(
+            'page_title',
+            'mcpTools',
+            'mcpToolStatuses',
+            'mcpToolsIndexFilterStatuses',
+            'mcpToolsIndexFilterKeyword',
+        ));
+    }
+
+    public function create(Request $request)
+    {
+        if (! $this->loggedUser) {
+            AppMiscService::addRedirectMsg(__('messages.general_not_allowed_access_message_text'));
+
+            return redirect()->route('home');
+        }
+
+        $libraryTools = $this->library->options();
+
+        if ($request->isMethod('POST')) {
+            $validator = $this->makeValidator($request);
+
+            if ($validator->fails()) {
+                AppMiscService::addRedirectMsg(__('messages.general_form_error_message'));
+
+                return redirect()->route('mcpTools.create')->withInput()->withErrors($validator->errors());
+            }
+
+            DB::beginTransaction();
+            $attributes = [];
+            try {
+                $attributes = $this->buildAttributes($request);
+                McpTool::create($attributes);
+
+                DB::commit();
+            } catch (RuntimeException|InvalidArgumentException $e) {
+                DB::rollback();
+
+                if (isset($attributes['tool_class']) && is_string($attributes['tool_class'])) {
+                    $this->customToolGenerator->deleteGeneratedFile($attributes['tool_class']);
+                }
+
+                logger()->error($e);
+                AppMiscService::addRedirectMsg($e->getMessage());
+
+                return redirect()->route('mcpTools.create')->withInput();
+            } catch (\Exception $e) {
+                DB::rollback();
+
+                if (isset($attributes['tool_class']) && is_string($attributes['tool_class'])) {
+                    $this->customToolGenerator->deleteGeneratedFile($attributes['tool_class']);
+                }
+
+                logger()->error($e);
+                AppMiscService::addRedirectMsg(__('messages.create_mcp_tool_error_msg'));
+
+                return redirect()->route('mcpTools.create')->withInput();
+            }
+
+            AppMiscService::addRedirectMsg(__('messages.create_mcp_tool_success_msg'), 'success');
+
+            return redirect()->route('mcpTools.index');
+        }
+
+        $page_title = __('messages.create_mcp_tool_page_title');
+
+        return view('mcp_tools.create', compact(
+            'page_title',
+            'libraryTools',
+        ));
+    }
+
+    public function edit($id, Request $request)
+    {
+        if (! $this->loggedUser) {
+            AppMiscService::addRedirectMsg(__('messages.general_not_allowed_access_message_text'));
+
+            return redirect()->route('home');
+        }
+
+        $mcpTool = McpTool::find($id);
+        if (! $mcpTool) {
+            AppMiscService::addRedirectMsg(__('messages.general_error_mcp_tool_not_found'));
+
+            return redirect()->route('mcpTools.index');
+        }
+
+        if ($request->isMethod('POST')) {
+            $validator = $this->makeValidator($request, $mcpTool);
+
+            if ($validator->fails()) {
+                AppMiscService::addRedirectMsg(__('messages.general_form_error_message'));
+
+                return redirect()->route('mcpTools.edit', ['id' => $mcpTool->id])->withInput()->withErrors($validator->errors());
+            }
+
+            DB::beginTransaction();
+            try {
+                $attributes = $this->buildAttributes($request, $mcpTool);
+                unset($attributes['name'], $attributes['tool_class'], $attributes['handler_type']);
+
+                if ($mcpTool->isHandlerTypeCustom()) {
+                    $context = CustomMcpToolContext::fromRequest($request);
+                    $this->customToolGenerator->syncContext((string) $mcpTool->tool_class, $context);
+                }
+
+                $mcpTool->update($attributes);
+
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollback();
+                logger()->error($e);
+                AppMiscService::addRedirectMsg(__('messages.edit_mcp_tool_error_msg'));
+
+                return redirect()->route('mcpTools.edit', ['id' => $mcpTool->id]);
+            }
+
+            AppMiscService::addRedirectMsg(__('messages.edit_mcp_tool_success_msg'), 'success');
+
+            return redirect()->route('mcpTools.index');
+        }
+
+        $page_title = __('messages.edit_mcp_tool_page_title', ['name' => $mcpTool->name]);
+
+        return view('mcp_tools.edit', compact(
+            'page_title',
+            'mcpTool',
+        ));
+    }
+
+    public function activate(Request $request)
+    {
+        if (! $this->loggedUser) {
+            AppMiscService::addRedirectMsg(__('messages.general_not_allowed_access_message_text'));
+
+            return redirect()->route('home');
+        }
+
+        $activate_id = (int) $request->post('activate_id', 0);
+        $mcpTool = McpTool::find($activate_id);
+        if (! $mcpTool) {
+            AppMiscService::addRedirectMsg(__('messages.general_error_mcp_tool_not_found'));
+
+            return redirect()->route('mcpTools.index');
+        }
+
+        DB::beginTransaction();
+        try {
+            $mcpTool->update([
+                'status' => McpTool::getStatusActive(),
+                'updated_at' => now(),
+                'updated_by' => $this->loggedUser->id,
+            ]);
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollback();
+            logger()->error($e);
+            AppMiscService::addRedirectMsg(__('messages.enable_mcp_tool_error_msg'));
+
+            return redirect()->route('mcpTools.index');
+        }
+
+        AppMiscService::addRedirectMsg(__('messages.enable_mcp_tool_success_msg'), 'success');
+
+        return redirect()->route('mcpTools.index');
+    }
+
+    public function deactivate(Request $request)
+    {
+        if (! $this->loggedUser) {
+            AppMiscService::addRedirectMsg(__('messages.general_not_allowed_access_message_text'));
+
+            return redirect()->route('home');
+        }
+
+        $deactivate_id = (int) $request->post('deactivate_id', 0);
+        $mcpTool = McpTool::find($deactivate_id);
+        if (! $mcpTool) {
+            AppMiscService::addRedirectMsg(__('messages.general_error_mcp_tool_not_found'));
+
+            return redirect()->route('mcpTools.index');
+        }
+
+        DB::beginTransaction();
+        try {
+            $mcpTool->update([
+                'status' => McpTool::getStatusInactive(),
+                'updated_at' => now(),
+                'updated_by' => $this->loggedUser->id,
+            ]);
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollback();
+            logger()->error($e);
+            AppMiscService::addRedirectMsg(__('messages.disable_mcp_tool_error_msg'));
+
+            return redirect()->route('mcpTools.index');
+        }
+
+        AppMiscService::addRedirectMsg(__('messages.disable_mcp_tool_success_msg'), 'success');
+
+        return redirect()->route('mcpTools.index');
+    }
+
+    public function delete(Request $request)
+    {
+        if (! $this->loggedUser) {
+            AppMiscService::addRedirectMsg(__('messages.general_not_allowed_access_message_text'));
+
+            return redirect()->route('home');
+        }
+
+        $delete_id = (int) $request->post('delete_id', 0);
+        $mcpTool = McpTool::find($delete_id);
+        if (! $mcpTool) {
+            AppMiscService::addRedirectMsg(__('messages.general_error_mcp_tool_not_found'));
+
+            return redirect()->route('mcpTools.index');
+        }
+
+        DB::beginTransaction();
+        try {
+            if ($mcpTool->isHandlerTypeCustom()) {
+                $this->customToolGenerator->deleteGeneratedFile((string) $mcpTool->tool_class);
+            }
+
+            $mcpTool->delete();
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollback();
+            logger()->error($e);
+            AppMiscService::addRedirectMsg(__('messages.delete_mcp_tool_error_msg'));
+
+            return redirect()->route('mcpTools.index');
+        }
+
+        AppMiscService::addRedirectMsg(__('messages.delete_mcp_tool_success_msg'), 'success');
+
+        return redirect()->route('mcpTools.index');
+    }
+
+    protected function makeValidator(Request $request, ?McpTool $mcpTool = null): \Illuminate\Contracts\Validation\Validator
+    {
+        $validationsMsgs = AppMiscService::defaultValidationMsgs();
+        $validationsMsgs['name.unique'] = __('messages.mcp_tools_general_error_name_is_not_unique');
+        $validationsMsgs['name.regex'] = __('messages.mcp_tools_general_error_name_invalid_format');
+        $validationsMsgs['tool_class.unique'] = __('messages.mcp_tools_general_error_library_tool_already_registered');
+        $validationsMsgs['tool_selection.required'] = __('messages.mcp_tools_general_error_tool_selection_required');
+
+        $isCustomSelection = $request->post('tool_selection') === McpTool::TOOL_SELECTION_CUSTOM;
+        $isCreate = $mcpTool === null;
+
+        $rules = [
+            'tool_selection' => ['required'],
+        ];
+
+        if ($isCreate) {
+            $nameRule = Rule::unique('mcp_tools', 'name');
+
+            $rules['name'] = ['required', $nameRule, 'max:55', 'regex:/^[a-z][a-z0-9_]*$/'];
+
+            if ($isCustomSelection) {
+                $rules['title'] = ['nullable', 'string', 'max:255'];
+                $rules['description'] = ['required', 'string'];
+                $rules['input_schema_json'] = ['nullable', 'string'];
+                $rules['output_schema_json'] = ['nullable', 'string'];
+                $rules['is_read_only'] = ['sometimes', 'boolean'];
+                $rules['is_destructive'] = ['sometimes', 'boolean'];
+            }
+        }
+
+        if ($isCreate && ! $isCustomSelection) {
+            $rules['tool_selection'][] = Rule::in($this->library->libraryToolClasses());
+            $rules['tool_selection'][] = function (string $attribute, mixed $value, \Closure $fail): void {
+                if (McpTool::query()->where('tool_class', $value)->exists()) {
+                    $fail(__('messages.mcp_tools_general_error_library_tool_already_registered'));
+                }
+            };
+        }
+
+        if (! $isCreate && $mcpTool->isHandlerTypeCustom()) {
+            $rules['title'] = ['nullable', 'string', 'max:255'];
+            $rules['description'] = ['required', 'string'];
+            $rules['input_schema_json'] = ['nullable', 'string'];
+            $rules['output_schema_json'] = ['nullable', 'string'];
+            $rules['is_read_only'] = ['sometimes', 'boolean'];
+            $rules['is_destructive'] = ['sometimes', 'boolean'];
+        }
+
+        $validator = Validator::make($request->all(), $rules, $validationsMsgs);
+
+        if ($isCustomSelection || (! $isCreate && $mcpTool?->isHandlerTypeCustom())) {
+            $validator->after(function ($validator) use ($request): void {
+                try {
+                    CustomMcpToolContext::fromRequest($request);
+                } catch (InvalidArgumentException $exception) {
+                    $validator->errors()->add('input_schema_json', $exception->getMessage());
+                }
+            });
+        }
+
+        return $validator;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function buildAttributes(Request $request, ?McpTool $mcpTool = null): array
+    {
+        if ($mcpTool !== null) {
+            if ($mcpTool->isHandlerTypeCustom()) {
+                return array_merge(
+                    CustomMcpToolContext::fromRequest($request)->toModelAttributes(),
+                    [
+                        'updated_at' => now(),
+                        'updated_by' => $this->loggedUser->id,
+                    ],
+                );
+            }
+
+            return [
+                'updated_at' => now(),
+                'updated_by' => $this->loggedUser->id,
+            ];
+        }
+
+        if ($request->post('tool_selection') === McpTool::TOOL_SELECTION_CUSTOM) {
+            $context = CustomMcpToolContext::fromRequest($request);
+            $generated = $this->customToolGenerator->generate(
+                (string) $request->post('name'),
+                $context,
+            );
+
+            return array_merge(
+                $context->toModelAttributes(),
+                [
+                    'name' => Str::snake((string) $request->post('name')),
+                    'handler_type' => McpTool::getHandlerTypeCustom(),
+                    'tool_class' => $generated['class'],
+                    'status' => McpTool::getStatusActive(),
+                    'created_at' => now(),
+                    'created_by' => $this->loggedUser->id,
+                ],
+            );
+        }
+
+        $libraryTool = $this->library->describe((string) $request->post('tool_selection'));
+
+        return [
+            'name' => Str::snake((string) $request->post('name')),
+            'description' => $libraryTool['description'],
+            'handler_type' => McpTool::getHandlerTypeLibrary(),
+            'tool_class' => $libraryTool['class'],
+            'status' => McpTool::getStatusActive(),
+            'created_at' => now(),
+            'created_by' => $this->loggedUser->id,
+        ];
+    }
+}

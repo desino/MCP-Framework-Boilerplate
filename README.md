@@ -1,19 +1,23 @@
 # desino/mcp-boilerplate
 
-Installable Laravel package that provides the MCP boilerplate from the Desino MCP reference application:
+Laravel scaffolding package that publishes the Desino MCP reference application into your host app via a single Artisan command — similar to [desino/boilerplate](https://github.com/desino/LaravelBoilerPlate).
 
-- Dynamic MCP server at `/mcp` with bearer token authentication
-- Admin UI to manage MCP tools (library + custom generated tools)
-- Built-in support tools: project resolver, GitHub code search/read/commits, PM tool ticket search
-- Audit logging for MCP tool executions
-- Database-backed project configuration for multi-project support
+After installation, MCP code lives in your application (`app/`, `routes/`, `resources/`, etc.) and can be edited like first-party code.
+
+## What gets published
+
+- MCP server at `/mcp` (`routes/ai.php`) with bearer token authentication
+- Admin UI to manage MCP tools (`/mcp_tools`)
+- Built-in library tools (GitHub, PM tool, project resolver)
+- Custom MCP tool generator and stubs
+- Models, migrations, services, views, and translations
 
 ## Requirements
 
 - PHP ^8.3
 - Laravel ^13
 - [laravel/mcp](https://github.com/laravel/mcp) ^0.8
-- Recommended: [desino/boilerplate](https://github.com/desino/LaravelBoilerPlate) for admin auth, layout, and redirect helpers
+- [desino/boilerplate](https://github.com/desino/LaravelBoilerPlate) ^1.0
 
 ## Installation
 
@@ -39,13 +43,44 @@ For local development from this repository:
 }
 ```
 
-### 2. Publish configuration (optional)
+### 2. Publish Desino boilerplate (if not already done)
 
 ```bash
-php artisan vendor:publish --tag=mcp-boilerplate-config
+php artisan make:desino-boilerplate
+composer update
 ```
 
-### 3. Configure environment
+### 3. Publish MCP boilerplate
+
+```bash
+php artisan make:desino-mcp-boilerplate
+```
+
+Use `--force` to overwrite files that already exist.
+
+This copies MCP scaffolding into your application:
+
+| Published to | Contents |
+|---|---|
+| `app/Http/Controllers/McpToolController.php` | Admin UI controller |
+| `app/Http/Middleware/VerifyMcpToken.php` | MCP bearer token middleware |
+| `app/Mcp/Servers/BoilerplateServer.php` | Dynamic MCP server |
+| `app/Mcp/Tools/` | Library MCP tools |
+| `app/Models/` | `McpTool`, `McpProject`, `McpAuditLog` |
+| `app/Services/` | Tool registry, GitHub/PM services, generator |
+| `config/mcp_support.php` | MCP configuration |
+| `routes/ai.php` | MCP HTTP endpoint registration |
+| `resources/views/mcp_tools/` | Admin Blade views |
+| `database/migrations/` | MCP database tables |
+| `stubs/mcp/` | Custom tool generation stubs |
+
+The command also merges:
+
+- MCP tool routes into `routes/web.php` (inside the `checkIfAdmin` middleware group)
+- MCP translation keys into `lang/en/messages.php`
+- `verifyMcpToken` middleware alias into `bootstrap/app.php`
+
+### 4. Configure environment
 
 ```env
 MCP_API_TOKEN=your-secret-token
@@ -59,50 +94,33 @@ PM_TOOL_API_TIMEOUT=20
 PM_TOOL_API_VERIFY=true
 ```
 
-### 4. Run migrations
+### 5. Run migrations
 
 ```bash
 php artisan migrate
 ```
 
-The package auto-loads its migrations for:
+Tables created:
 
 - `mcp_projects`
 - `mcp_tools`
 - `mcp_audit_logs`
 
-### 5. Register admin middleware (if using desino/boilerplate)
-
-Ensure your host app registers the admin middleware alias used by the MCP tool manager routes:
-
-```php
-// bootstrap/app.php
-$middleware->alias([
-    'checkIfAdmin' => \App\Http\Middleware\CheckUserIsAdmin::class,
-]);
-```
-
 ### 6. Add navigation link (optional)
 
-Add an MCP Tools menu item to your layout, for example in `resources/views/layouts/app.blade.php`:
+Add an MCP Tools menu item to your layout:
 
 ```blade
 <a class="nav-link" href="{{ route('mcpTools.index') }}">
-    {{ __('mcp-boilerplate::messages.main_menu_mcp_tools_title') }}
+    {{ __('messages.main_menu_mcp_tools_title') }}
 </a>
-```
-
-Or merge the translation into your app language file:
-
-```bash
-php artisan vendor:publish --tag=mcp-boilerplate-lang
 ```
 
 ## Usage
 
 ### MCP endpoint
 
-Once installed, active tools registered in the admin UI are exposed at:
+Active tools registered in the admin UI are exposed at:
 
 ```
 POST /mcp
@@ -117,11 +135,7 @@ Authorization: Bearer {MCP_API_TOKEN}
 | `/mcp_tools/create` | `mcpTools.create` |
 | `/mcp_tools/{id}/edit` | `mcpTools.edit` |
 
-These routes use the middleware configured in `config/mcp-boilerplate.php` (default: `auth`, `checkIfAdmin`).
-
 ### Library tools
-
-The following tools ship with the package and can be registered from the admin UI:
 
 - `support.resolve_project` — Resolve project details from a project code
 - `pmtool.search_tickets` — Smart PM tool ticket search
@@ -131,37 +145,28 @@ The following tools ship with the package and can be registered from the admin U
 
 ### Custom tools
 
-Custom tools are generated into `app/Mcp/Tools/` in the host application. Configure the target namespace/path in `config/mcp-boilerplate.php` if needed.
+Custom tools are generated into `app/Mcp/Tools/` when created from the admin UI.
 
 ## Configuration
 
-Key options in `config/mcp-boilerplate.php`:
+Key options in `config/mcp_support.php`:
 
 | Key | Description |
 |-----|-------------|
-| `mcp_path` | MCP HTTP endpoint path (default: `/mcp`) |
 | `mcp_api_token` | Bearer token for MCP requests |
-| `admin_middleware` | Middleware for admin UI routes |
-| `redirect_helper` | Host class providing redirect flash messages (default: `App\Services\AppMiscService`) |
-| `layout_view` | Blade layout for admin views (default: `layouts.app`) |
-| `custom_tools.namespace` | Namespace for generated custom tools |
-| `custom_tools.path` | Directory for generated custom tool classes |
+| `github_api_url` | GitHub API base URL |
+| `github_timeout` | GitHub API timeout (seconds) |
+| `pmtool.base_url` | PM tool API URL |
+| `pmtool.api_key` | PM tool API key |
 
-## Publishing assets
+## Package vs application code
 
-```bash
-# Config
-php artisan vendor:publish --tag=mcp-boilerplate-config
+This package is a **thin installer**. It only ships:
 
-# Views (override package views)
-php artisan vendor:publish --tag=mcp-boilerplate-views
+- `MakeMcpBoilerplateCommand` (`php artisan make:desino-mcp-boilerplate`)
+- Application stubs under `src/stubs/`
 
-# Language lines
-php artisan vendor:publish --tag=mcp-boilerplate-lang
-
-# Custom tool stubs
-php artisan vendor:publish --tag=mcp-boilerplate-stubs
-```
+All runtime MCP logic runs from your host application's `app/` directory after publishing.
 
 ## License
 

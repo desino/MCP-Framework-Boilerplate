@@ -1,0 +1,13 @@
+<?php
+
+return [
+    'mcp_api_token' => env('MCP_API_TOKEN'),
+    'github_api_url' => env('MCP_GITHUB_API_URL', 'https://api.github.com'),
+    'github_timeout' => (int) env('MCP_GITHUB_TIMEOUT', 20),
+    'pmtool' => [
+        'base_url' => env('PM_TOOL_API_URL', 'https://pmtool.local'),
+        'api_key' => env('PM_TOOL_API_KEY'),
+        'timeout' => (int) env('PM_TOOL_API_TIMEOUT', 20),
+        'verify' => filter_var(env('PM_TOOL_API_VERIFY', true), FILTER_VALIDATE_BOOLEAN),
+    ],
+];

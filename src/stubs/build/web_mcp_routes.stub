@@ -1,0 +1,6 @@
+    Route::match(['get', 'post'], 'mcp_tools', [McpToolController::class, 'index'])->name('mcpTools.index');
+    Route::match(['get', 'post'], 'mcp_tools/create', [McpToolController::class, 'create'])->name('mcpTools.create');
+    Route::match(['get', 'post'], 'mcp_tools/{id}/edit', [McpToolController::class, 'edit'])->name('mcpTools.edit');
+    Route::post('mcp_tools/activate', [McpToolController::class, 'activate'])->name('mcpTools.activate');
+    Route::post('mcp_tools/deactivate', [McpToolController::class, 'deactivate'])->name('mcpTools.deactivate');
+    Route::post('mcp_tools/delete', [McpToolController::class, 'delete'])->name('mcpTools.delete');
