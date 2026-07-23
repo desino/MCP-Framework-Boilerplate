@@ -16,8 +16,8 @@ After installation, MCP code lives in your application (`app/`, `routes/`, `reso
 
 - PHP ^8.3
 - Laravel ^13
-- [laravel/mcp](https://github.com/laravel/mcp) ^0.8
-- [desino/boilerplate](https://github.com/desino/LaravelBoilerPlate) ^1.0
+- [laravel/mcp](https://github.com/laravel/mcp)
+- [desino/boilerplate](https://github.com/desino/LaravelBoilerPlate)
 
 ## Installation
 

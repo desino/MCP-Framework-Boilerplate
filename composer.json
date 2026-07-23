@@ -23,9 +23,9 @@
     ],
     "require": {
         "php": "^8.3",
-        "desino/boilerplate": "^1.0",
+        "desino/boilerplate": "*",
         "laravel/framework": "^13.0",
-        "laravel/mcp": "^0.8"
+        "laravel/mcp": "*"
     },
     "autoload": {
         "psr-4": {
